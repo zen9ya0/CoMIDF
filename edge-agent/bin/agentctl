@@ -1,0 +1,108 @@
+#!/usr/bin/env python3
+"""
+Edge Agent CLI tool.
+"""
+import sys
+import os
+import argparse
+import requests
+import json
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+
+def status(args):
+    """Get agent status."""
+    url = f"http://{args.host}:{args.port}/health"
+    try:
+        resp = requests.get(url, timeout=5)
+        resp.raise_for_status()
+        data = resp.json()
+        print(json.dumps(data, indent=2))
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def metrics(args):
+    """Get Prometheus metrics."""
+    url = f"http://{args.host}:{args.port}/metrics"
+    try:
+        resp = requests.get(url, timeout=5)
+        resp.raise_for_status()
+        print(resp.text)
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def config(args):
+    """Get agent config."""
+    url = f"http://{args.host}:{args.port}/config"
+    try:
+        resp = requests.get(url, timeout=5)
+        resp.raise_for_status()
+        data = resp.json()
+        print(json.dumps(data, indent=2))
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def feedback(args):
+    """Apply feedback policy."""
+    url = f"http://{args.host}:{args.port}/feedback"
+    try:
+        with open(args.file) as f:
+            policy = json.load(f)
+        resp = requests.post(url, json=policy)
+        resp.raise_for_status()
+        data = resp.json()
+        print(json.dumps(data, indent=2))
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def main():
+    parser = argparse.ArgumentParser(description="CoMIDF Edge Agent CLI")
+    parser.add_argument(
+        "--host", default="127.0.0.1", help="Agent host (default: 127.0.0.1)"
+    )
+    parser.add_argument(
+        "--port", default=9306, type=int, help="Agent port (default: 9306)"
+    )
+
+    subparsers = parser.add_subparsers(dest="command", help="Commands")
+
+    # Status
+    subparsers.add_parser("status", help="Show agent status")
+
+    # Metrics
+    subparsers.add_parser("metrics", help="Show Prometheus metrics")
+
+    # Config
+    subparsers.add_parser("config", help="Show agent config")
+
+    # Feedback
+    feedback_parser = subparsers.add_parser("feedback", help="Apply feedback policy")
+    feedback_parser.add_argument("file", help="Policy JSON file")
+
+    args = parser.parse_args()
+
+    commands = {
+        "status": status,
+        "metrics": metrics,
+        "config": config,
+        "feedback": feedback,
+    }
+
+    if args.command:
+        commands[args.command](args)
+    else:
+        parser.print_help()
+
+
+if __name__ == "__main__":
+    main()
+

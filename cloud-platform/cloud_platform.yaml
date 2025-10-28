@@ -1,0 +1,49 @@
+tenants:
+  - id: "TENANT-12345"
+    name: "Test Tenant"
+    status: "active"
+    created_at: "2025-01-01T00:00:00Z"
+
+ingress:
+  port: 8080
+  mtsl: true
+  rate_limit:
+    per_agent: 3000
+    burst: 5000
+
+kafka:
+  brokers: ["localhost:9092"]
+  topics:
+    ingest: "uer.ingest"
+    deadletter: "uer.deadletter"
+    posterior: "gc.posterior"
+    feedback: "afl.feedback"
+
+gc:
+  window_size_sec: 5
+  max_concurrent: 100
+  trust_alpha: 0.9
+
+pr:
+  thresholds:
+    alert: 0.6
+    action: 0.85
+  two_step_validation: true
+
+afl:
+  update_interval_sec: 300
+  precision_window: 1000
+
+database:
+  postgres:
+    host: "localhost"
+    port: 5432
+    database: "comidf"
+  elasticsearch:
+    host: "localhost"
+    port: 9200
+
+observability:
+  prometheus_port: 9090
+  log_level: "info"
+

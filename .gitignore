@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+*.log
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# System
+.DS_Store
+Thumbs.db
+
+# Project specific
+*.db
+*.sqlite
+.env
+*.pem
+*.key
+nginx/ssl/*.pem
+nginx/logs/*.log
+
+# Temporary files
+*.tmp
+*.bak
+*.summary
+*.txt
+
+# Docker
+*.pid
+docker-compose.override.yml
+
+

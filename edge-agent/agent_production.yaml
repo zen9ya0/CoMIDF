@@ -1,0 +1,83 @@
+# CoMIDF Edge Agent Configuration - Production
+# All traffic through HTTPS 443
+
+agent:
+  id: "edge-ap01"
+  tenant_id: "TENANT-12345"
+  site: "hq-taipei"
+  timezone: "Asia/Taipei"
+
+uplink:
+  # ⚠️ 重要: 使用 HTTPS 443 端口
+  mssp_url: "https://your-cloud.example.com"  # 通过反向代理
+  fal_endpoint: "/api/fal/uer"
+  token: "<YOUR-API-TOKEN>"
+  
+  # TLS 配置 - 标准 HTTPS (不启用 mTLS)
+  tls:
+    mtls: false  # 不使用 mTLS (通过 Nginx 反向代理)
+    verify: true  # 验证 SSL 证书
+    
+  # 或启用 mTLS (如果 Cloud 要求)
+  # tls:
+  #   mtls: true
+  #   ca_cert: "/etc/comidf/agent/ca.pem"
+  #   cert: "/etc/comidf/agent/agent.pem"
+  #   key: "/etc/comidf/agent/agent.key"
+  
+  retry:
+    backoff_ms: [200, 500, 1000, 2000, 4000]
+    max_retries: 10
+    timeout_seconds: 30
+
+buffer:
+  backend: "sqlite"
+  path: "/var/lib/comidf/agent/buffer.db"
+  max_mb: 2048
+  flush_batch: 500
+  flush_interval_seconds: 60
+
+privacy:
+  id_salt: "CHANGE-THIS-SALT"
+  strip_fields: ["usernames", "urls", "payload"]
+
+agents:
+  http:
+    enabled: true
+    pcap: "/dev/net/tap0"
+    thresholds:
+      score_alert: 0.7
+      score_high: 0.85
+      
+  mqtt:
+    enabled: true
+    source: "tcp://127.0.0.1:1883"
+    thresholds:
+      score_alert: 0.65
+      score_high: 0.80
+      
+  coap:
+    enabled: false
+
+metrics:
+  prometheus_port: 9108
+  metrics_path: "/metrics"
+
+logging:
+  level: "info"
+  json: true
+  log_file: "/var/log/comidf/agent.log"
+  max_size_mb: 100
+  backup_count: 5
+
+# 心跳配置
+heartbeat:
+  interval_seconds: 60
+  endpoint: "/api/v1/agent/heartbeat"
+
+# 重连配置
+reconnect:
+  max_retries: -1  # -1 表示无限重试
+  initial_delay_seconds: 5
+  max_delay_seconds: 300
+
