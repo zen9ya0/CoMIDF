@@ -9,6 +9,11 @@ echo "CoMIDF Cloud Platform Installation"
 echo "========================================="
 echo ""
 
+# Resolve project root (repo root is one directory above this script)
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$ROOT_DIR"
+
 # Check if running as root
 if [ "$EUID" -ne 0 ]; then
     echo "Error: Please run as root (use sudo)"
@@ -170,7 +175,116 @@ echo "  Management interface: $mgmt_iface ($mgmt_ip)"
 echo "  Data interface: $data_iface ($data_ip)"
 echo ""
 echo "Next steps:"
-echo "  1. Install Python dependencies: pip install -r requirements.txt"
-echo "  2. Start Cloud Platform: python cloud_platform/main.py"
+echo "  - Installing dependencies and preparing environment..."
+
+# ---------------------------------------------------------------
+# Prepare environment directories
+# ---------------------------------------------------------------
+mkdir -p /etc/comidf
+mkdir -p /var/log/comidf
+chown "$USER":"$USER" /var/log/comidf || true
+mkdir -p /etc/comidf/certs
+
+# ---------------------------------------------------------------
+# Python venv & dependencies
+# ---------------------------------------------------------------
+if [ ! -d "$ROOT_DIR/venv" ]; then
+  echo "Creating Python virtual environment..."
+  python3 -m venv "$ROOT_DIR/venv"
+fi
+
+echo "Activating venv and installing requirements..."
+. "$ROOT_DIR/venv/bin/activate"
+pip install --upgrade pip >/dev/null
+pip install -r "$ROOT_DIR/requirements.txt"
+
+# ---------------------------------------------------------------
+# Environment variables (OAuth / Session / DB)
+# ---------------------------------------------------------------
+echo ""
+echo "Configure optional Google OAuth (press Enter to skip):"
+read -p "GOOGLE_CLIENT_ID: " GOOGLE_CLIENT_ID
+read -p "GOOGLE_CLIENT_SECRET: " GOOGLE_CLIENT_SECRET
+
+# Generate session secret if not provided
+if command -v openssl >/dev/null 2>&1; then
+  SESSION_SECRET_GENERATED=$(openssl rand -hex 32)
+else
+  SESSION_SECRET_GENERATED=$(python3 - <<'PY'
+import secrets; print(secrets.token_hex(32))
+PY
+)
+fi
+
+# Default DB to sqlite under /etc/comidf
+DATABASE_URL_DEFAULT="sqlite:////etc/comidf/comidf.db"
+
+# ---------------------------------------------------------------
+# Generate self-signed TLS certs (server)
+# ---------------------------------------------------------------
+CERT_DIR="/etc/comidf/certs"
+SERVER_KEY="$CERT_DIR/server.key"
+SERVER_CRT="$CERT_DIR/server.crt"
+if [ ! -f "$SERVER_KEY" ] || [ ! -f "$SERVER_CRT" ]; then
+  echo "Generating self-signed TLS certificate..."
+  openssl req -x509 -nodes -newkey rsa:2048 \
+    -keyout "$SERVER_KEY" -out "$SERVER_CRT" -days 825 \
+    -subj "/CN=$(hostname)"
+  chmod 600 "$SERVER_KEY"
+fi
+
+cat > /etc/comidf/cloud_env.sh <<EOF
+# CoMIDF Cloud environment
+export PYTHONPATH=/opt/CoMIDF
+export DATABASE_URL="${DATABASE_URL:-$DATABASE_URL_DEFAULT}"
+export SESSION_SECRET="${SESSION_SECRET:-$SESSION_SECRET_GENERATED}"
+export SESSION_COOKIE_NAME="comidf_session"
+export SESSION_COOKIE_SECURE="true"
+export SESSION_COOKIE_SAMESITE="lax"
+export GOOGLE_CLIENT_ID="${GOOGLE_CLIENT_ID}"
+export GOOGLE_CLIENT_SECRET="${GOOGLE_CLIENT_SECRET}"
+export SSL_CERT_FILE="$SERVER_CRT"
+export SSL_KEY_FILE="$SERVER_KEY"
+export CLOUD_HTTPS_PORT="8443"
+EOF
+
+chmod 600 /etc/comidf/cloud_env.sh || true
+
+# ---------------------------------------------------------------
+# Create run script
+# ---------------------------------------------------------------
+cat > "$ROOT_DIR/scripts/run_cloud.sh" <<'EOF'
+#!/bin/bash
+set -e
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$ROOT_DIR"
+if [ -f /etc/comidf/cloud_env.sh ]; then
+  . /etc/comidf/cloud_env.sh
+fi
+. "$ROOT_DIR/venv/bin/activate"
+PORT="${CLOUD_HTTPS_PORT:-8443}"
+if [ -n "$SSL_CERT_FILE" ] && [ -n "$SSL_KEY_FILE" ]; then
+  exec python -m uvicorn cloud_platform.uer_gateway.receiver:app \
+    --host 0.0.0.0 --port "$PORT" \
+    --ssl-certfile "$SSL_CERT_FILE" --ssl-keyfile "$SSL_KEY_FILE"
+else
+  echo "Warning: SSL certs not set, starting without TLS." >&2
+  exec python -m uvicorn cloud_platform.uer_gateway.receiver:app --host 0.0.0.0 --port "$PORT"
+fi
+EOF
+
+chmod +x "$ROOT_DIR/scripts/run_cloud.sh"
+
+echo ""
+echo "========================================="
+echo "Cloud Platform installation completed!"
+echo "========================================="
+echo ""
+echo "Environment saved to: /etc/comidf/cloud_env.sh"
+echo "TLS cert: $SERVER_CRT"
+echo "HTTPS port: ${CLOUD_HTTPS_PORT:-8443}"
+echo "To start the service, run:"
+echo "  $ROOT_DIR/scripts/run_cloud.sh"
 echo ""
 
